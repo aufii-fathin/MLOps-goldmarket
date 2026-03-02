@@ -102,9 +102,7 @@ gold-market-mlops/
 ├── configs/
 ├── notebooks/
 ├── tests/
-├── Dockerfile
-├── requirements.txt
-└── .github/workflows/
+└── requirements.txt
 ```
 
 ## Tech Stack

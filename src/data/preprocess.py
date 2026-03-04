@@ -27,6 +27,8 @@ def create_features(df):
     df["lag_2"] = df["Close"].shift(2)
     df["lag_3"] = df["Close"].shift(3)
     df["lag_5"] = df["Close"].shift(5)
+    df["lag_7"] = df["Close"].shift(7)
+    df["lag_10"] = df["Close"].shift(10)
 
     # rolling statistics
     df["rolling_mean_7"] = df["Close"].rolling(7).mean()
@@ -34,6 +36,9 @@ def create_features(df):
 
     # volatility
     df["volatility_20"] = df["return"].rolling(20).std()
+
+    # target
+    df["target"] = df["Close"].shift(-1)
 
     df = df.dropna()
 

@@ -20,7 +20,7 @@ def clean_data(df):
 def create_features(df):
 
     # return
-    df["return"] = df["Close"].pct_change()
+    df["return"] = df["Close"].pct_change().shift(1)
 
     # lag features
     df["lag_1"] = df["Close"].shift(1)
@@ -31,14 +31,14 @@ def create_features(df):
     df["lag_10"] = df["Close"].shift(10)
 
     # rolling statistics
-    df["rolling_mean_7"] = df["Close"].rolling(7).mean()
-    df["rolling_std_7"] = df["Close"].rolling(7).std()
+    df["rolling_mean_7"] = df["Close"].shift(1).rolling(7).mean()
+    df["rolling_std_7"] = df["Close"].shift(1).rolling(7).std()
 
     # volatility
     df["volatility_20"] = df["return"].rolling(20).std()
 
     # target
-    df["target"] = df["Close"].shift(-1)
+    df["target"] = df["Close"].pct_change().shift(-1)
 
     df = df.dropna()
 

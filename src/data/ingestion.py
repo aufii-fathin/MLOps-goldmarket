@@ -75,12 +75,37 @@ def fetch_macro_data(start_date):
     return macro_df
 
 
-def save_dataset(df, filename):
-
+def save_dataset(df_new, filename):
     path = RAW_PATH / filename
-    df.to_csv(path, index=False)
+    df_new = df_new.copy()
+
+    if "Date" in df_new.columns:
+        df_new["Date"] = pd.to_datetime(df_new["Date"])
+
+    if path.exists():
+        print(f"Existing file found: {path}")
+
+        df_old = pd.read_csv(path)
+
+        if "Date" in df_old.columns:
+            df_old["Date"] = pd.to_datetime(df_old["Date"])
+
+        df = pd.concat([df_old, df_new], ignore_index=True)
+
+        df = df.drop_duplicates(subset=["Date"], keep="last")
+        df = df.sort_values("Date").reset_index(drop=True)
+
+        added_rows = max(len(df) - len(df_old), 0)
+
+    else:
+        df = df_new.sort_values("Date").reset_index(drop=True)
+        added_rows = len(df)
+
+    df.to_csv(path, index=False, date_format="%Y-%m-%d")
 
     print(f"Saved → {path}")
+    print(f"Rows added: {added_rows}")
+    print(f"Total rows: {len(df)}")
 
 
 def main():

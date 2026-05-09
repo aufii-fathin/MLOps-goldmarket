@@ -1,0 +1,8 @@
+artifact_location: file:///workspaces/MLOps-goldmarket/mlruns/290722195100698926
+creation_time: 1778307605787
+experiment_id: '290722195100698926'
+last_update_time: 1778307605787
+lifecycle_stage: active
+name: gold-price-prediction
+trace_location: null
+workspace: default

@@ -14,6 +14,7 @@ from xgboost import XGBRegressor
 import mlflow
 import mlflow.sklearn
 import mlflow.xgboost
+mlflow.set_tracking_uri("file:./mlruns")
 
 import warnings
 import logging

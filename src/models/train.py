@@ -45,7 +45,7 @@ def main():
         },
         "Random Forest": {
             "model": RandomForestRegressor(
-                n_estimators=200,
+                n_estimators=150,
                 max_depth=10,
                 random_state=42
             ),

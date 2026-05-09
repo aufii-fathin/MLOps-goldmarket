@@ -1,4 +1,7 @@
 [core]
-    remote = gdrive_remote
-['remote "gdrive_remote"']
-    url = gdrive://16PgSLO0hRMklLb9nzeTx3cTRIf8rT19w
+    remote = origin
+['remote "origin"']
+    url = https://dagshub.com/aufii-fathin/MLOps-goldmarket.dvc
+    auth = basic
+    user = aufii-fathin
+    password = b0815f5526a09cd2bf06c4324766bd8655aec0ed

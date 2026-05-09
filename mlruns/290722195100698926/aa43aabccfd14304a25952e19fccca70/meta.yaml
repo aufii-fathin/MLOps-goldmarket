@@ -1,0 +1,14 @@
+artifact_uri: file:///workspaces/MLOps-goldmarket/mlruns/290722195100698926/aa43aabccfd14304a25952e19fccca70/artifacts
+end_time: 1778307633965
+entry_point_name: ''
+experiment_id: '290722195100698926'
+lifecycle_stage: active
+run_id: aa43aabccfd14304a25952e19fccca70
+run_name: Random Forest_fold2
+source_name: ''
+source_type: 4
+source_version: ''
+start_time: 1778307629458
+status: 3
+tags: []
+user_id: codespace

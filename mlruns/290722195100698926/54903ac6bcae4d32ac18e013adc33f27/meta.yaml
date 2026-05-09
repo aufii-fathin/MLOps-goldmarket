@@ -1,0 +1,14 @@
+artifact_uri: file:///workspaces/MLOps-goldmarket/mlruns/290722195100698926/54903ac6bcae4d32ac18e013adc33f27/artifacts
+end_time: 1778307665119
+entry_point_name: ''
+experiment_id: '290722195100698926'
+lifecycle_stage: active
+run_id: 54903ac6bcae4d32ac18e013adc33f27
+run_name: Gradient Boosting_fold3
+source_name: ''
+source_type: 4
+source_version: ''
+start_time: 1778307660057
+status: 3
+tags: []
+user_id: codespace

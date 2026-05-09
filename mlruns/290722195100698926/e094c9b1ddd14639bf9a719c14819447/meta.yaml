@@ -1,0 +1,14 @@
+artifact_uri: file:///workspaces/MLOps-goldmarket/mlruns/290722195100698926/e094c9b1ddd14639bf9a719c14819447/artifacts
+end_time: 1778307617999
+entry_point_name: ''
+experiment_id: '290722195100698926'
+lifecycle_stage: active
+run_id: e094c9b1ddd14639bf9a719c14819447
+run_name: Linear Regression_fold3
+source_name: ''
+source_type: 4
+source_version: ''
+start_time: 1778307614615
+status: 3
+tags: []
+user_id: codespace

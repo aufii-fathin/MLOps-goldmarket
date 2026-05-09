@@ -1,0 +1,10 @@
+artifact_location: file:///workspaces/MLOps-goldmarket/mlruns/290722195100698926/models/m-d7774725d62c49888982855bf0df2fb1/artifacts
+creation_timestamp: 1778307611505
+experiment_id: '290722195100698926'
+last_updated_timestamp: 1778307614607
+model_id: m-d7774725d62c49888982855bf0df2fb1
+model_type: null
+name: model
+source_run_id: 341ce23997954ee0b69fdfe8c757dc7b
+status: 2
+status_message: null

@@ -1,0 +1,50 @@
+name: MLOps Automation Pipeline
+
+on:
+  push:
+    branches:
+      - main
+      - dev
+
+  pull_request:
+
+jobs:
+  pipeline:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install Dependencies
+        run: |
+          pip install -r requirements.txt
+          pip install pytest
+          pip install "dvc[http]"
+          pip install dagshub
+
+      - name: Configure DVC Authentication
+        run: |
+          dvc remote modify origin auth basic
+          dvc remote modify origin user ${{ secrets.DAGSHUB_USER }}
+          dvc remote modify origin password ${{ secrets.DAGSHUB_TOKEN }}
+
+      - name: Pull Dataset from DVC
+        run: dvc pull
+
+      - name: Run Automated Tests
+        run: pytest tests/
+
+      - name: Retrain Model
+        run: python src/models/train.py
+
+      - name: Validate Model Performance
+        run: python src/models/evaluate.py
+
+      - name: Transition Model to Staging
+        run: python src/registry/transition_stage.py

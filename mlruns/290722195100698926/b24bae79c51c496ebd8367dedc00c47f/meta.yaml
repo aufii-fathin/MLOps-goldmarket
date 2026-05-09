@@ -1,0 +1,14 @@
+artifact_uri: file:///workspaces/MLOps-goldmarket/mlruns/290722195100698926/b24bae79c51c496ebd8367dedc00c47f/artifacts
+end_time: 1778307689698
+entry_point_name: ''
+experiment_id: '290722195100698926'
+lifecycle_stage: active
+run_id: b24bae79c51c496ebd8367dedc00c47f
+run_name: XGBoost_fold3
+source_name: ''
+source_type: 4
+source_version: ''
+start_time: 1778307685388
+status: 3
+tags: []
+user_id: codespace

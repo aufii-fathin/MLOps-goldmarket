@@ -1,9 +1,11 @@
 import pandas as pd
 import numpy as np
 import joblib
+import json
 from pathlib import Path
 from sklearn.preprocessing import StandardScaler
 from sklearn.model_selection import TimeSeriesSplit
+from sklearn.base import clone
 
 from sklearn.metrics import mean_squared_error, mean_absolute_error, r2_score
 from sklearn.linear_model import LinearRegression
@@ -14,60 +16,60 @@ from xgboost import XGBRegressor
 import mlflow
 import mlflow.sklearn
 import mlflow.xgboost
+
 mlflow.set_tracking_uri("sqlite:///mlflow.db")
 
 import warnings
 import logging
+
 logging.getLogger("mlflow").setLevel(logging.ERROR)
 warnings.filterwarnings("ignore", category=UserWarning, module="mlflow")
+
 
 def main():
     # LOAD DATA
     df = pd.read_csv("data/processed/gold_features.csv")
     df["Date"] = pd.to_datetime(df["Date"])
 
-    # TARGET
-    target = "target"
+    # MULTI-HORIZON TARGETS (Close forecasting)
+    horizons = [1, 3, 5, 7]
+    target_cols = [f"y_{h}" for h in horizons]
+    missing_targets = [c for c in target_cols if c not in df.columns]
+    if missing_targets:
+        raise ValueError(
+            "Missing target columns in data/processed/gold_features.csv: "
+            f"{missing_targets}. Run src/data/preprocess_gold.py first."
+        )
 
-    X = df.drop(columns=["Date", "Close", "target"])
-    y = df[target]
+    # Features
+    X = df.drop(columns=["Date"] + target_cols)
+    feature_cols = list(X.columns)
 
     # TIME SERIES SPLIT (walk-forward, 5 folds)
-    tscv = TimeSeriesSplit(n_splits=5)
+    tscv = TimeSeriesSplit(n_splits=5, gap=max(horizons))
 
     # MODEL DEFINITIONS + PARAMS
     model_defs = {
         "Linear Regression": {
-            "model": LinearRegression(fit_intercept=False),
-            "params": {
-                "fit_intercept": False
-            }
+            "model": LinearRegression(fit_intercept=True),
+            "params": {"fit_intercept": True},
         },
         "Random Forest": {
             "model": RandomForestRegressor(
-                n_estimators=150,
-                max_depth=10,
-                random_state=42
+                n_estimators=200, max_depth=10, random_state=42
             ),
-            "params": {
-                "n_estimators": 200,
-                "max_depth": 10,
-                "random_state": 42
-            }
+            "params": {"n_estimators": 200, "max_depth": 10, "random_state": 42},
         },
         "Gradient Boosting": {
             "model": GradientBoostingRegressor(
-                n_estimators=200,
-                learning_rate=0.05,
-                max_depth=3,
-                random_state=42
+                n_estimators=200, learning_rate=0.05, max_depth=3, random_state=42
             ),
             "params": {
                 "n_estimators": 200,
                 "learning_rate": 0.05,
                 "max_depth": 3,
-                "random_state": 42
-            }
+                "random_state": 42,
+            },
         },
         "XGBoost": {
             "model": XGBRegressor(
@@ -76,7 +78,7 @@ def main():
                 max_depth=5,
                 subsample=0.8,
                 colsample_bytree=0.8,
-                random_state=42
+                random_state=42,
             ),
             "params": {
                 "n_estimators": 300,
@@ -84,141 +86,224 @@ def main():
                 "max_depth": 5,
                 "subsample": 0.8,
                 "colsample_bytree": 0.8,
-                "random_state": 42
-            }
+                "random_state": 42,
+            },
         },
     }
 
-    # RESULTS STORAGE (per fold)
-    fold_results = {name: {"rmse": [], "mae": [], "r2": []} for name in model_defs}
+    # RESULTS STORAGE: fold_results[horizon][model] -> metrics
+    fold_results = {
+        h: {
+            name: {
+                "rmse": [],
+                "mae": [],
+                "r2": [],
+                "rmse_pct": [],
+                "naive_rmse": [],
+                "naive_mae": [],
+                "naive_r2": [],
+                "naive_rmse_pct": [],
+            }
+            for name in model_defs
+        }
+        for h in horizons
+    }
 
     # MLflow experiment
-    mlflow.set_experiment("gold-price-prediction")
+    mlflow.set_experiment("gold-close-forecast")
 
-    # WALK-FORWARD VALIDATION (per model per fold = 1 MLflow run)
-    for name, config in model_defs.items():
-        model = config["model"]
-        params = config["params"]
+    # Persist feature column order for inference
+    model_dir = Path("models")
+    model_dir.mkdir(exist_ok=True)
+    with open(model_dir / "feature_columns.json", "w", encoding="utf-8") as f:
+        json.dump(feature_cols, f, indent=2)
 
-        print(f"\n{'='*40}")
-        print(f"Training: {name}")
+    # WALK-FORWARD VALIDATION (per horizon, per model, per fold = 1 MLflow run)
+    for horizon in horizons:
+        y = df[f"y_{horizon}"]
 
-        for fold, (train_idx, test_idx) in enumerate(tscv.split(X), start=1):
-            print(f"\n  Fold {fold}")
-            print(f"    Train: {df['Date'].iloc[train_idx[0]].date()} -> {df['Date'].iloc[train_idx[-1]].date()}")
-            print(f"    Test : {df['Date'].iloc[test_idx[0]].date()} -> {df['Date'].iloc[test_idx[-1]].date()}")
+        print(f"\n{'=' * 60}")
+        print(f"Horizon: +{horizon} day(s) (predict Close)")
+        print(f"{'=' * 60}")
 
-            X_train, X_test = X.iloc[train_idx], X.iloc[test_idx]
-            y_train, y_test = y.iloc[train_idx], y.iloc[test_idx]
+        for name, config in model_defs.items():
+            base_model = config["model"]
+            params = config["params"]
 
-            scaler = StandardScaler()
-            X_train_sc = scaler.fit_transform(X_train)
-            X_test_sc = scaler.transform(X_test)
+            print(f"\n{'=' * 40}")
+            print(f"Training: {name}")
 
-            with mlflow.start_run(run_name=f"{name}_fold{fold}"):
+            for fold, (train_idx, test_idx) in enumerate(tscv.split(X), start=1):
+                print(f"\n  Fold {fold}")
+                print(
+                    f"    Train: {df['Date'].iloc[train_idx[0]].date()} -> {df['Date'].iloc[train_idx[-1]].date()}"
+                )
+                print(
+                    f"    Test : {df['Date'].iloc[test_idx[0]].date()} -> {df['Date'].iloc[test_idx[-1]].date()}"
+                )
 
-                # Log params
-                mlflow.log_param("model", name)
-                mlflow.log_param("fold", fold)
-                mlflow.log_param("train_size", len(train_idx))
-                mlflow.log_param("test_size", len(test_idx))
-                for k, v in params.items():
-                    mlflow.log_param(k, v)
+                X_train, X_test = X.iloc[train_idx], X.iloc[test_idx]
+                y_train, y_test = y.iloc[train_idx], y.iloc[test_idx]
 
-                # Train
-                if name == "Linear Regression":
+                naive_pred = X_test["Close"].to_numpy()
+
+                scaler = StandardScaler()
+                X_train_sc = scaler.fit_transform(X_train)
+                X_test_sc = scaler.transform(X_test)
+
+                model = clone(base_model)
+
+                with mlflow.start_run(run_name=f"{name}_h{horizon}_fold{fold}"):
+                    # Log params
+                    mlflow.log_param("model", name)
+                    mlflow.log_param("horizon", horizon)
+                    mlflow.log_param("fold", fold)
+                    mlflow.log_param("train_size", len(train_idx))
+                    mlflow.log_param("test_size", len(test_idx))
+                    for k, v in params.items():
+                        mlflow.log_param(k, v)
+
+                    # Train (always on scaled features for consistency)
                     model.fit(X_train_sc, y_train)
                     pred = model.predict(X_test_sc)
-                else:
-                    model.fit(X_train, y_train)
-                    pred = model.predict(X_test)
 
-                # Metrics
-                rmse = np.sqrt(mean_squared_error(y_test, pred))
-                mae = mean_absolute_error(y_test, pred)
-                r2 = r2_score(y_test, pred)
+                    # Metrics
+                    rmse = np.sqrt(mean_squared_error(y_test, pred))
+                    mae = mean_absolute_error(y_test, pred)
+                    r2 = r2_score(y_test, pred)
 
-                mlflow.log_metric("rmse", rmse)
-                mlflow.log_metric("mae", mae)
-                mlflow.log_metric("r2", r2)
+                    naive_rmse = np.sqrt(mean_squared_error(y_test, naive_pred))
+                    naive_mae = mean_absolute_error(y_test, naive_pred)
+                    naive_r2 = r2_score(y_test, naive_pred)
 
-                fold_results[name]["rmse"].append(rmse)
-                fold_results[name]["mae"].append(mae)
-                fold_results[name]["r2"].append(r2)
+                    # Relative RMSE (percentage of average true Close in the fold)
+                    y_mean = float(np.mean(y_test))
+                    rmse_pct = float(rmse / y_mean) if y_mean != 0 else float("nan")
+                    naive_rmse_pct = (
+                        float(naive_rmse / y_mean) if y_mean != 0 else float("nan")
+                    )
 
-                print(f"    RMSE: {rmse:.6f} | MAE: {mae:.6f} | R2: {r2:.4f}")
+                    mlflow.log_metric("rmse", rmse)
+                    mlflow.log_metric("mae", mae)
+                    mlflow.log_metric("r2", r2)
 
-                # Log model per fold
-                if name == "XGBoost":
-                    mlflow.xgboost.log_model(model, name="model")
-                else:
-                    mlflow.sklearn.log_model(model, name="model")
+                    mlflow.log_metric("naive_rmse", naive_rmse)
+                    mlflow.log_metric("naive_mae", naive_mae)
+                    mlflow.log_metric("naive_r2", naive_r2)
 
-    # AVERAGE METRICS ACROSS FOLDS
-    print(f"\n{'='*40}")
-    print("AVERAGE METRICS ACROSS FOLDS")
-    print(f"{'='*40}")
+                    mlflow.log_metric("rmse_pct", rmse_pct)
+                    mlflow.log_metric("naive_rmse_pct", naive_rmse_pct)
 
-    results = []
-    for name, metrics in fold_results.items():
-        avg_rmse = np.mean(metrics["rmse"])
-        avg_mae = np.mean(metrics["mae"])
-        avg_r2 = np.mean(metrics["r2"])
+                    fold_results[horizon][name]["rmse"].append(rmse)
+                    fold_results[horizon][name]["mae"].append(mae)
+                    fold_results[horizon][name]["r2"].append(r2)
 
-        results.append({
-            "model": name,
-            "rmse": avg_rmse,
-            "mae": avg_mae,
-            "r2": avg_r2
-        })
+                    fold_results[horizon][name]["rmse_pct"].append(rmse_pct)
+                    fold_results[horizon][name]["naive_rmse"].append(naive_rmse)
+                    fold_results[horizon][name]["naive_mae"].append(naive_mae)
+                    fold_results[horizon][name]["naive_r2"].append(naive_r2)
+                    fold_results[horizon][name]["naive_rmse_pct"].append(naive_rmse_pct)
 
-        print(f"\nModel: {name}")
-        print(f"  RMSE: {avg_rmse:.6f}")
-        print(f"  MAE : {avg_mae:.6f}")
-        print(f"  R2  : {avg_r2:.4f}")
+                    print(f"    RMSE: {rmse:.6f} | MAE: {mae:.6f} | R2: {r2:.4f}")
+                    print(
+                        f"    Naive RMSE: {naive_rmse:.6f} | Naive MAE: {naive_mae:.6f} | Naive R2: {naive_r2:.4f}"
+                    )
+                    print(
+                        f"    RMSE%: {rmse_pct * 100:.3f}% | Naive RMSE%: {naive_rmse_pct * 100:.3f}%"
+                    )
 
-    results_df = pd.DataFrame(results)
+                    # Log model per fold
+                    if name == "XGBoost":
+                        mlflow.xgboost.log_model(model, name="model")
+                    else:
+                        mlflow.sklearn.log_model(model, name="model")
 
-    # SELECT BEST MODEL (by avg RMSE)
-    best_model_name = results_df.sort_values("rmse").iloc[0]["model"]
-    print(f"\nBest Model: {best_model_name}")
+    # AVERAGE METRICS ACROSS FOLDS + RETRAIN BEST PER HORIZON
+    for horizon in horizons:
+        print(f"\n{'=' * 40}")
+        print(f"AVERAGE METRICS ACROSS FOLDS (horizon=+{horizon}d)")
+        print(f"{'=' * 40}")
 
-    # RETRAIN BEST MODEL ON FULL DATA
-    scaler_final = StandardScaler()
-    X_all = scaler_final.fit_transform(X)
+        results = []
+        for name, metrics in fold_results[horizon].items():
+            avg_rmse = float(np.mean(metrics["rmse"]))
+            avg_mae = float(np.mean(metrics["mae"]))
+            avg_r2 = float(np.mean(metrics["r2"]))
+            avg_rmse_pct = float(np.mean(metrics["rmse_pct"]))
 
-    best_model = model_defs[best_model_name]["model"]
-    best_params = model_defs[best_model_name]["params"]
-    best_model.fit(X_all, y)
+            avg_naive_rmse = float(np.mean(metrics["naive_rmse"]))
+            avg_naive_mae = float(np.mean(metrics["naive_mae"]))
+            avg_naive_r2 = float(np.mean(metrics["naive_r2"]))
+            avg_naive_rmse_pct = float(np.mean(metrics["naive_rmse_pct"]))
 
-    # LOG BEST MODEL KE MLFLOW
-    with mlflow.start_run(run_name=f"BEST_{best_model_name}_final"):
-        mlflow.log_param("model", best_model_name)
-        mlflow.log_param("retrained_on", "full_data")
-        for k, v in best_params.items():
-            mlflow.log_param(k, v)
+            results.append(
+                {
+                    "horizon": horizon,
+                    "model": name,
+                    "rmse": avg_rmse,
+                    "mae": avg_mae,
+                    "r2": avg_r2,
+                    "rmse_pct": avg_rmse_pct,
+                    "naive_rmse": avg_naive_rmse,
+                    "naive_mae": avg_naive_mae,
+                    "naive_r2": avg_naive_r2,
+                    "naive_rmse_pct": avg_naive_rmse_pct,
+                }
+            )
 
-        best_metrics = results_df[results_df["model"] == best_model_name].iloc[0]
-        mlflow.log_metric("avg_rmse", best_metrics["rmse"])
-        mlflow.log_metric("avg_mae", best_metrics["mae"])
-        mlflow.log_metric("avg_r2", best_metrics["r2"])
+            print(f"\nModel: {name}")
+            print(f"  RMSE: {avg_rmse:.6f}")
+            print(f"  MAE : {avg_mae:.6f}")
+            print(f"  R2  : {avg_r2:.4f}")
+            print(f"  RMSE%: {avg_rmse_pct * 100:.3f}%")
+            print(f"  Naive RMSE%: {avg_naive_rmse_pct * 100:.3f}%")
 
-        if best_model_name == "XGBoost":
-            mlflow.xgboost.log_model(best_model, name="best_model")
-        else:
-            mlflow.sklearn.log_model(best_model, name="best_model")
+        results_df = pd.DataFrame(results).sort_values("rmse")
 
-    # SAVE LOCALLY
-    model_path = Path("models")
-    model_path.mkdir(exist_ok=True)
+        best_model_name = results_df.iloc[0]["model"]
+        print(f"\nBest Model (h=+{horizon}d): {best_model_name}")
 
-    joblib.dump(best_model, model_path / "best_model.pkl")
-    joblib.dump(scaler_final, model_path / "scaler.pkl")
-    results_df.to_csv(model_path / "model_results.csv", index=False)
+        # Retrain best model on full data for this horizon
+        y_full = df[f"y_{horizon}"]
+        scaler_final = StandardScaler()
+        X_all = scaler_final.fit_transform(X)
 
-    print(f"Best model saved to models/best_model.pkl")
-    print(f"Scaler saved to models/scaler.pkl")
-    print(f"Results saved to models/model_results.csv")
+        best_model = clone(model_defs[best_model_name]["model"])
+        best_params = model_defs[best_model_name]["params"]
+        best_model.fit(X_all, y_full)
+
+        # MLflow run for final model
+        with mlflow.start_run(run_name=f"BEST_{best_model_name}_h{horizon}_final"):
+            mlflow.log_param("model", best_model_name)
+            mlflow.log_param("horizon", horizon)
+            mlflow.log_param("retrained_on", "full_data")
+            for k, v in best_params.items():
+                mlflow.log_param(k, v)
+
+            best_metrics = results_df.iloc[0]
+            mlflow.log_metric("avg_rmse", best_metrics["rmse"])
+            mlflow.log_metric("avg_mae", best_metrics["mae"])
+            mlflow.log_metric("avg_r2", best_metrics["r2"])
+
+            if best_model_name == "XGBoost":
+                mlflow.xgboost.log_model(best_model, name="best_model")
+            else:
+                mlflow.sklearn.log_model(best_model, name="best_model")
+
+        # Save per-horizon artifacts
+        joblib.dump(best_model, model_dir / f"best_model_h{horizon}.pkl")
+        joblib.dump(scaler_final, model_dir / f"scaler_h{horizon}.pkl")
+        results_df.to_csv(model_dir / f"model_results_h{horizon}.csv", index=False)
+
+        # Backward compatibility: keep the old filenames for horizon=1
+        if horizon == 1:
+            joblib.dump(best_model, model_dir / "best_model.pkl")
+            joblib.dump(scaler_final, model_dir / "scaler.pkl")
+            results_df.drop(columns=["horizon"]).to_csv(
+                model_dir / "model_results.csv", index=False
+            )
+
+    print("\nTraining complete. Artifacts saved under models/.")
 
 
 if __name__ == "__main__":

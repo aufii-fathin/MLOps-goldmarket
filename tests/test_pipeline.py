@@ -25,7 +25,10 @@ def test_required_columns_exist():
     df = pd.read_csv("data/processed/gold_features.csv")
 
     required_columns = [
-        "target"
+        "y_1",
+        "y_3",
+        "y_5",
+        "y_7",
     ]
 
     for col in required_columns:
@@ -67,11 +70,7 @@ def test_results_have_metrics():
     """
     results = pd.read_csv("models/model_results.csv")
 
-    required_metrics = [
-        "rmse",
-        "mae",
-        "r2"
-    ]
+    required_metrics = ["rmse", "mae", "r2"]
 
     for metric in required_metrics:
         assert metric in results.columns

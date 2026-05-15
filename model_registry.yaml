@@ -1,12 +1,20 @@
-model:
-  name: gold-price-model
-  version: 2
-  alias: production
+models:
+  - horizon_days: 1
+    name: gold-close-model-h1
+    alias: production
+  - horizon_days: 3
+    name: gold-close-model-h3
+    alias: production
+  - horizon_days: 5
+    name: gold-close-model-h5
+    alias: production
+  - horizon_days: 7
+    name: gold-close-model-h7
+    alias: production
 
 mlflow:
-  production_run_id: 19d0bf98a251403b95d2b17b9a8ac922
-  staging_run_id: 5022fb9674b9495abaaaa258d3528d18
-  production_model_uri: models:/gold-price-model@production
+  tracking_uri: sqlite:///mlflow.db
+  experiment_name: gold-close-forecast
 
 data:
   raw_path: data/raw
@@ -18,7 +26,6 @@ dvc:
     - processed.dvc
 
 description: >
-  Linear Regression model version 2 is deployed as the production model,
-  while version 1 is retained for staging purposes. The model is trained
-  on preprocessed data tracked using DVC, ensuring end-to-end data lineage
-  and reproducibility between datasets, experiments, and model versions.
+  Multi-horizon gold Close forecasting models are registered per horizon
+  (+1, +3, +5, +7 days). Each horizon can be promoted independently based
+  on walk-forward validation results and comparison against a naive baseline.

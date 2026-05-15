@@ -11,9 +11,6 @@ def run_pipeline():
     print("Training model...")
     train()
 
-    print("Running prediction...")
-    predict()
-
 
 if __name__ == "__main__":
     run_pipeline()

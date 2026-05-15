@@ -1,85 +1,90 @@
-import warnings
-from pathlib import Path
-
-import numpy as np
 import pandas as pd
-
-warnings.filterwarnings("ignore")
-
-
-def _fit_arima(close_train: np.ndarray, order: tuple[int, int, int]):
-    try:
-        from statsmodels.tsa.arima.model import ARIMA
-    except Exception as exc:
-        raise ImportError(
-            "statsmodels is required for ARIMA. Install with: pip install statsmodels"
-        ) from exc
-
-    model = ARIMA(
-        close_train,
-        order=order,
-        enforce_stationarity=False,
-        enforce_invertibility=False,
-    )
-    return model.fit()
-
-
-def _fit_garch(residuals: np.ndarray):
-    try:
-        from arch import arch_model
-    except Exception as exc:
-        raise ImportError(
-            "arch is required for GARCH. Install with: pip install arch"
-        ) from exc
-
-    am = arch_model(residuals, mean="Zero", vol="GARCH", p=1, q=1, dist="normal")
-    return am.fit(disp="off")
+import yfinance as yf
+import joblib
+import json
+from pathlib import Path
 
 
 def main():
+
     horizons = [1, 3, 5, 7]
-    max_h = max(horizons)
-    arima_order = (1, 1, 1)
 
-    raw_path = Path("data/raw/gold_prices.csv")
-    if not raw_path.exists():
+    model_dir = Path("models")
+
+    # LOAD FEATURE COLUMNS
+    feature_cols_path = model_dir / "feature_columns.json"
+    if not feature_cols_path.exists():
         raise FileNotFoundError(
-            "Missing data/raw/gold_prices.csv. Run ingestion first: python src/data/ingestion.py"
+            "Missing models/feature_columns.json. Run training first (src/models/train.py)."
         )
+    with open(feature_cols_path, "r", encoding="utf-8") as f:
+        feature_cols = json.load(f)
 
-    df = pd.read_csv(raw_path)
-    if "Date" not in df.columns or "Close" not in df.columns:
-        raise ValueError("gold_prices.csv must contain Date and Close columns")
-
-    df["Date"] = pd.to_datetime(df["Date"])
-    df = df.sort_values("Date").drop_duplicates(subset="Date")
-
-    close = df["Close"].to_numpy(dtype=float)
-
-    arima_fit = _fit_arima(close, arima_order)
-    mean_forecast = np.asarray(arima_fit.forecast(steps=max_h), dtype=float)
-
-    print(f"\nARIMA(order={arima_order}) forecast from latest close")
-    print(f"Latest date: {df['Date'].iloc[-1].date()} | Latest Close: {close[-1]:.4f}")
+    # LOAD MODELS & SCALERS PER HORIZON
+    models = {}
+    scalers = {}
     for h in horizons:
-        print(f"Predicted Close +{h}d: {float(mean_forecast[h - 1]):.4f}")
+        model_path = model_dir / f"best_model_h{h}.pkl"
+        scaler_path = model_dir / f"scaler_h{h}.pkl"
 
-    try:
-        resid = np.asarray(arima_fit.resid, dtype=float)
-        if len(resid) > 50:
-            garch_fit = _fit_garch(resid)
-            var = garch_fit.forecast(horizon=max_h, reindex=False).variance.values[-1]
-            sigma = np.sqrt(var)
+        # Backward-compatible fallback for horizon=1
+        if h == 1 and (not model_path.exists() or not scaler_path.exists()):
+            model_path = model_dir / "best_model.pkl"
+            scaler_path = model_dir / "scaler.pkl"
 
-            print("\nARIMA-GARCH(1,1) approximate 95% intervals")
-            for h in horizons:
-                mu = float(mean_forecast[h - 1])
-                s = float(sigma[h - 1])
-                lo = mu - 1.96 * s
-                hi = mu + 1.96 * s
-                print(f"+{h}d: mean={mu:.4f} | 95% [{lo:.4f}, {hi:.4f}]")
-    except ImportError:
-        pass
+        models[h] = joblib.load(model_path)
+        scalers[h] = joblib.load(scaler_path)
+
+    # FETCH LATEST DATA
+    df = yf.download("GC=F", period="30d", interval="1d")
+
+    if isinstance(df.columns, pd.MultiIndex):
+        df.columns = df.columns.get_level_values(0)
+
+    df = df.reset_index()
+
+    # FEATURE ENGINEERING
+    df["Date"] = pd.to_datetime(df["Date"])
+    df = df.sort_values("Date")
+    df = df.drop_duplicates(subset="Date")
+
+    # Keep only needed base column
+    df = df[["Date", "Close"]].copy()
+
+    df["return_1d"] = df["Close"].pct_change()
+
+    df["lag_1"] = df["Close"].shift(1)
+    df["lag_2"] = df["Close"].shift(2)
+    df["lag_3"] = df["Close"].shift(3)
+    df["lag_5"] = df["Close"].shift(5)
+    df["lag_7"] = df["Close"].shift(7)
+    df["lag_10"] = df["Close"].shift(10)
+
+    df["rolling_mean_7"] = df["Close"].rolling(7).mean()
+    df["rolling_std_7"] = df["Close"].rolling(7).std()
+
+    df["volatility_20"] = df["return_1d"].rolling(20).std()
+
+    df = df.dropna()
+
+    # TAKE LATEST ROW
+    latest = df.iloc[-1:]
+    latest_ts = pd.to_datetime(latest["Date"].iloc[0])
+
+    X = latest[feature_cols]
+
+    print(
+        "\nLatest gold Close:",
+        float(latest["Close"].values[0]),
+        "| Date:",
+        latest_ts.date(),
+    )
+
+    for h in horizons:
+        X_scaled = scalers[h].transform(X)
+        pred_close = float(models[h].predict(X_scaled)[0])
+        forecast_date = (latest_ts + pd.Timedelta(days=h)).date()
+        print(f"Predicted Close +{h}d ({forecast_date}):", pred_close)
 
 
 if __name__ == "__main__":

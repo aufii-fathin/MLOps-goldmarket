@@ -1,0 +1,23 @@
+artifact_path: /workspaces/MLOps-goldmarket/mlruns/1/models/m-9692b174a8be4c0586f12088735db696/artifacts
+flavors:
+  python_function:
+    env:
+      conda: conda.yaml
+      virtualenv: python_env.yaml
+    loader_module: mlflow.sklearn
+    model_path: model.pkl
+    predict_fn: predict
+    python_version: 3.12.1
+  sklearn:
+    code: null
+    pickled_model: model.pkl
+    serialization_format: cloudpickle
+    sklearn_version: 1.8.0
+    skops_trusted_types: null
+mlflow_version: 3.11.1
+model_id: m-9692b174a8be4c0586f12088735db696
+model_size_bytes: 595
+model_uuid: m-9692b174a8be4c0586f12088735db696
+prompts: null
+run_id: 80c81727aed0476fbc03caa74c1bac48
+utc_time_created: '2026-05-15 08:22:07.577346'

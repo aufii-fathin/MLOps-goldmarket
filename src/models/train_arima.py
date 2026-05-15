@@ -1,9 +1,11 @@
 import warnings
 from dataclasses import dataclass
 from pathlib import Path
+import tempfile
 
 import numpy as np
 import pandas as pd
+import joblib
 from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score
 from sklearn.model_selection import TimeSeriesSplit
 
@@ -79,11 +81,11 @@ def _predict_for_fold(
     train_idx: np.ndarray,
     test_idx: np.ndarray,
     horizon: int,
+    max_h: int,
     arima_order: tuple[int, int, int],
     use_garch: bool,
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray | None]:
     train_end = int(train_idx[-1])
-    max_h = 7
 
     close_series = df["Close"].to_numpy(dtype=float)
     close_train = close_series[train_idx]
@@ -202,6 +204,7 @@ def main():
                     train_idx=train_idx,
                     test_idx=test_idx,
                     horizon=horizon,
+                    max_h=max(horizons),
                     arima_order=arima_order,
                     use_garch=use_garch,
                 )
@@ -297,13 +300,90 @@ def main():
     out_dir = Path("models")
     out_dir.mkdir(exist_ok=True)
     out_path = out_dir / "arima_results.csv"
-    pd.DataFrame(results_rows).to_csv(out_path, index=False)
+    results_df = pd.DataFrame(results_rows)
+    results_df.to_csv(out_path, index=False)
     print(f"\nSaved ARIMA results to {out_path}")
 
     if mlflow is not None:
         with mlflow.start_run(run_name="ARIMA_RESULTS"):
             mlflow.log_param("file", "models/arima_results.csv")
             mlflow.log_artifact(str(out_path))
+
+        class _ArimaGarchModel(mlflow.pyfunc.PythonModel):
+            def load_context(self, context):
+                self.arima_fit = joblib.load(context.artifacts["arima"])
+                garch_path = context.artifacts.get("garch")
+                self.garch_fit = joblib.load(garch_path) if garch_path else None
+
+            def predict(self, context, model_input):
+                steps = 1
+                if hasattr(model_input, "columns") and "steps" in model_input.columns:
+                    steps = int(model_input["steps"].iloc[0])
+
+                mean = np.asarray(self.arima_fit.forecast(steps=steps), dtype=float)
+                data = {"mean": mean}
+                if self.garch_fit is not None:
+                    var = self.garch_fit.forecast(horizon=steps, reindex=False).variance
+                    sigma = np.sqrt(var.values[-1])
+                    data["sigma"] = np.asarray(sigma, dtype=float)
+                return pd.DataFrame(data)
+
+        # Fit final ARIMA on full data and log a BEST run per horizon
+        close_full = df["Close"].to_numpy(dtype=float)
+        final_arima_fit = _fit_arima(close_full, arima_order)
+
+        for horizon in horizons:
+            horizon_rows = results_df[results_df["horizon"] == horizon]
+            if horizon_rows.empty:
+                continue
+
+            best_row = horizon_rows.sort_values("rmse").iloc[0]
+            model_name = str(best_row["model"])
+
+            with mlflow.start_run(run_name=f"BEST_{model_name}_h{horizon}_final"):
+                mlflow.log_param("model", model_name)
+                mlflow.log_param("horizon", horizon)
+                mlflow.log_param("arima_order", str(arima_order))
+                mlflow.log_param("use_garch", model_name == "ARIMA-GARCH")
+
+                mlflow.log_metric("avg_rmse", float(best_row["rmse"]))
+                mlflow.log_metric("avg_mae", float(best_row["mae"]))
+                mlflow.log_metric("avg_r2", float(best_row["r2"]))
+                mlflow.log_metric("avg_rmse_pct", float(best_row["rmse_pct"]))
+
+                mlflow.log_metric("avg_naive_rmse", float(best_row["naive_rmse"]))
+                mlflow.log_metric("avg_naive_mae", float(best_row["naive_mae"]))
+                mlflow.log_metric("avg_naive_r2", float(best_row["naive_r2"]))
+                mlflow.log_metric(
+                    "avg_naive_rmse_pct", float(best_row["naive_rmse_pct"])
+                )
+
+                try:
+                    if model_name == "ARIMA-GARCH":
+                        resid = np.asarray(final_arima_fit.resid, dtype=float)
+                        garch_fit = _fit_garch(resid) if len(resid) > 50 else None
+
+                        with tempfile.TemporaryDirectory() as tmpdir:
+                            arima_path = Path(tmpdir) / "arima.pkl"
+                            joblib.dump(final_arima_fit, arima_path)
+                            artifacts = {"arima": str(arima_path)}
+
+                            if garch_fit is not None:
+                                garch_path = Path(tmpdir) / "garch.pkl"
+                                joblib.dump(garch_fit, garch_path)
+                                artifacts["garch"] = str(garch_path)
+
+                            mlflow.pyfunc.log_model(
+                                artifact_path="best_model",
+                                python_model=_ArimaGarchModel(),
+                                artifacts=artifacts,
+                            )
+                    else:
+                        mlflow.statsmodels.log_model(
+                            final_arima_fit, artifact_path="best_model"
+                        )
+                except Exception:
+                    mlflow.log_param("model_log_status", "model_log_failed")
 
 
 if __name__ == "__main__":

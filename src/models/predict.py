@@ -69,15 +69,22 @@ def main():
 
     # TAKE LATEST ROW
     latest = df.iloc[-1:]
+    latest_ts = pd.to_datetime(latest["Date"].iloc[0])
 
     X = latest[feature_cols]
 
-    print("\nLatest gold Close:", float(latest["Close"].values[0]))
+    print(
+        "\nLatest gold Close:",
+        float(latest["Close"].values[0]),
+        "| Date:",
+        latest_ts.date(),
+    )
 
     for h in horizons:
         X_scaled = scalers[h].transform(X)
         pred_close = float(models[h].predict(X_scaled)[0])
-        print(f"Predicted Close +{h}d:", pred_close)
+        forecast_date = (latest_ts + pd.Timedelta(days=h)).date()
+        print(f"Predicted Close +{h}d ({forecast_date}):", pred_close)
 
 
 if __name__ == "__main__":

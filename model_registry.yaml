@@ -13,7 +13,7 @@ models:
     alias: production
 
 mlflow:
-  tracking_uri: sqlite:///mlflow.db
+  tracking_uri: sqlite:///mlflow_db.db
   experiment_name: gold-close-forecast
 
 data:

@@ -1,0 +1,22 @@
+artifact_path: /workspaces/MLOps-goldmarket/mlruns/1/models/m-924fbb844eda43648efdc9d7a3ded1d5/artifacts
+flavors:
+  python_function:
+    data: model.ubj
+    env:
+      conda: conda.yaml
+      virtualenv: python_env.yaml
+    loader_module: mlflow.xgboost
+    python_version: 3.12.1
+  xgboost:
+    code: null
+    data: model.ubj
+    model_class: xgboost.sklearn.XGBRegressor
+    model_format: ubj
+    xgb_version: 3.2.0
+mlflow_version: 3.11.1
+model_id: m-924fbb844eda43648efdc9d7a3ded1d5
+model_size_bytes: 674776
+model_uuid: m-924fbb844eda43648efdc9d7a3ded1d5
+prompts: null
+run_id: 4e42e4dc311844abbe9eabebaf6d02a5
+utc_time_created: '2026-05-15 08:21:38.106019'

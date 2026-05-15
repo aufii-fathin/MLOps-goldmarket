@@ -1,0 +1,20 @@
+artifact_path: /workspaces/MLOps-goldmarket/mlruns/1/models/m-40808d9b40604cc787c02629cf59172a/artifacts
+flavors:
+  python_function:
+    data: model.statsmodels
+    env:
+      conda: conda.yaml
+      virtualenv: python_env.yaml
+    loader_module: mlflow.statsmodels
+    python_version: 3.12.1
+  statsmodels:
+    code: null
+    data: model.statsmodels
+    statsmodels_version: 0.14.6
+mlflow_version: 3.11.1
+model_id: m-40808d9b40604cc787c02629cf59172a
+model_size_bytes: 5493362
+model_uuid: m-40808d9b40604cc787c02629cf59172a
+prompts: null
+run_id: 3d78a3bba00a4e28a663294b07960c99
+utc_time_created: '2026-05-15 08:29:11.151298'

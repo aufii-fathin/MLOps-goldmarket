@@ -14,15 +14,18 @@ def clean_data(df):
     df = df.sort_values("Date")
     df = df.drop_duplicates(subset="Date")
 
+    if "Close" in df.columns:
+        df = df[["Date", "Close"]].copy()
+
     return df
 
 
 def create_features(df):
 
-    # return
-    df["return"] = df["Close"].pct_change().shift(1)
+    # return (t-1 -> t)
+    df["return_1d"] = df["Close"].pct_change()
 
-    # lag features
+    # lag features (past Close values)
     df["lag_1"] = df["Close"].shift(1)
     df["lag_2"] = df["Close"].shift(2)
     df["lag_3"] = df["Close"].shift(3)
@@ -30,15 +33,18 @@ def create_features(df):
     df["lag_7"] = df["Close"].shift(7)
     df["lag_10"] = df["Close"].shift(10)
 
-    # rolling statistics
-    df["rolling_mean_7"] = df["Close"].shift(1).rolling(7).mean()
-    df["rolling_std_7"] = df["Close"].shift(1).rolling(7).std()
+    # rolling statistics (include up to time t)
+    df["rolling_mean_7"] = df["Close"].rolling(7).mean()
+    df["rolling_std_7"] = df["Close"].rolling(7).std()
 
-    # volatility
-    df["volatility_20"] = df["return"].rolling(20).std()
+    # volatility (return volatility up to time t)
+    df["volatility_20"] = df["return_1d"].rolling(20).std()
 
-    # target
-    df["target"] = df["Close"].pct_change().shift(-1)
+    # multi-horizon targets (direct forecasting)
+    df["y_1"] = df["Close"].shift(-1)
+    df["y_3"] = df["Close"].shift(-3)
+    df["y_5"] = df["Close"].shift(-5)
+    df["y_7"] = df["Close"].shift(-7)
 
     df = df.dropna()
 

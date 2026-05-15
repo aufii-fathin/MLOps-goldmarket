@@ -11,6 +11,9 @@ on:
 jobs:
   pipeline:
     runs-on: ubuntu-latest
+    env:
+      MLFLOW_TRACKING_URI: sqlite:///${{ github.workspace }}/mlflow_ci.db
+      MLFLOW_ARTIFACT_ROOT: ${{ github.workspace }}/mlruns
 
     steps:
       - name: Checkout Repository

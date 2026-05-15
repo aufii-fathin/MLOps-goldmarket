@@ -248,3 +248,6 @@ zc.lockfile==4.0
 zipp==3.23.1
 statsmodels>=0.14.0
 arch>=5.0.0
+pytest==9.0.3
+fastapi==0.136.1
+uvicorn==0.46.0

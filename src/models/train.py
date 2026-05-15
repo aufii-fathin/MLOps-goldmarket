@@ -1,3 +1,4 @@
+import os
 import pandas as pd
 import numpy as np
 import joblib
@@ -17,7 +18,12 @@ import mlflow
 import mlflow.sklearn
 import mlflow.xgboost
 
-mlflow.set_tracking_uri("sqlite:///mlflow.db")
+# Configure MLflow tracking and artifacts for local and CI use
+mlflow_tracking_uri = os.getenv("MLFLOW_TRACKING_URI", "sqlite:///mlflow_new.db")
+mlflow_artifact_root = os.getenv("MLFLOW_ARTIFACT_ROOT", str(Path.cwd() / "mlruns"))
+Path(mlflow_artifact_root).mkdir(parents=True, exist_ok=True)
+os.environ.setdefault("MLFLOW_ARTIFACT_ROOT", str(Path(mlflow_artifact_root).resolve()))
+mlflow.set_tracking_uri(mlflow_tracking_uri)
 
 import warnings
 import logging
@@ -214,9 +220,9 @@ def main():
 
                     # Log model per fold
                     if name == "XGBoost":
-                        mlflow.xgboost.log_model(model, name="model")
+                        mlflow.xgboost.log_model(model, artifact_path="model")
                     else:
-                        mlflow.sklearn.log_model(model, name="model")
+                        mlflow.sklearn.log_model(model, artifact_path="model")
 
     # AVERAGE METRICS ACROSS FOLDS + RETRAIN BEST PER HORIZON
     for horizon in horizons:
@@ -286,16 +292,15 @@ def main():
             mlflow.log_metric("avg_r2", best_metrics["r2"])
 
             if best_model_name == "XGBoost":
-                mlflow.xgboost.log_model(best_model, name="best_model")
+                mlflow.xgboost.log_model(best_model, artifact_path="best_model")
             else:
-                mlflow.sklearn.log_model(best_model, name="best_model")
+                mlflow.sklearn.log_model(best_model, artifact_path="best_model")
 
         # Save per-horizon artifacts
         joblib.dump(best_model, model_dir / f"best_model_h{horizon}.pkl")
         joblib.dump(scaler_final, model_dir / f"scaler_h{horizon}.pkl")
         results_df.to_csv(model_dir / f"model_results_h{horizon}.csv", index=False)
 
-        # Backward compatibility: keep the old filenames for horizon=1
         if horizon == 1:
             joblib.dump(best_model, model_dir / "best_model.pkl")
             joblib.dump(scaler_final, model_dir / "scaler.pkl")

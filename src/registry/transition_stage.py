@@ -1,9 +1,15 @@
+import os
 import warnings
+from pathlib import Path
 
 warnings.filterwarnings("ignore", category=FutureWarning)
 import mlflow
 
-mlflow.set_tracking_uri("sqlite:///mlflow.db")
+mlflow_tracking_uri = os.getenv("MLFLOW_TRACKING_URI", "sqlite:///mlflow_new.db")
+mlflow_artifact_root = os.getenv("MLFLOW_ARTIFACT_ROOT", str(Path.cwd() / "mlruns"))
+Path(mlflow_artifact_root).mkdir(parents=True, exist_ok=True)
+os.environ.setdefault("MLFLOW_ARTIFACT_ROOT", str(Path(mlflow_artifact_root).resolve()))
+mlflow.set_tracking_uri(mlflow_tracking_uri)
 from mlflow.tracking import MlflowClient
 
 EXPERIMENT_NAME = "gold-close-forecast"
@@ -11,23 +17,36 @@ HORIZONS = [1, 3, 5, 7]
 MODEL_NAME_PREFIX = "gold-close-model"
 
 
-def _latest_best_run_id(horizon: int) -> str | None:
+def _best_run_id(horizon: int) -> str | None:
     runs = mlflow.search_runs(
         experiment_names=[EXPERIMENT_NAME],
         filter_string=f"tags.mlflow.runName LIKE 'BEST_%_h{horizon}_final'",
-        order_by=["start_time DESC"],
-        max_results=1,
     )
     if runs.empty:
         return None
-    return runs.iloc[0].run_id
+
+    metric_col = None
+    for col in ("metrics.avg_rmse", "metrics.rmse"):
+        if col in runs.columns:
+            metric_col = col
+            break
+
+    if metric_col is None:
+        return runs.iloc[0].run_id
+
+    runs = runs.dropna(subset=[metric_col])
+    if runs.empty:
+        return None
+
+    best_row = runs.loc[runs[metric_col].idxmin()]
+    return best_row.run_id
 
 
 def main() -> None:
     client = MlflowClient()
 
     for h in HORIZONS:
-        run_id = _latest_best_run_id(h)
+        run_id = _best_run_id(h)
         if run_id is None:
             print(
                 f"No BEST run found for horizon=+{h}d in experiment '{EXPERIMENT_NAME}'."

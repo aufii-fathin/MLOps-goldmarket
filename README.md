@@ -21,6 +21,7 @@ Production-ready MLOps system for forecasting gold prices and monitoring market 
 - [Machine Learning Tasks](#machine-learning-tasks)
 - [System Architecture](#system-architecture)
 - [Project Structure](#project-structure)
+- [Running with Docker Compose](#running-with-docker-compose)
 - [Running with GitHub Codespaces](#running-with-github-codespaces)
 - [Data Ingestion & Preprocessing](#data-ingestion--preprocessing)
 - [Data Versioning with DVC](#data-versioning-with-dvc)
@@ -114,6 +115,34 @@ gold-market-mlops/
 └── requirements.txt
 ````
 
+## Running with Docker Compose
+ 
+Run the entire system — PostgreSQL, MLflow Server, and API Service — with a single command:
+ 
+```bash
+docker compose up -d --build
+```
+ 
+Verify all containers are running:
+ 
+```bash
+docker compose ps
+```
+ 
+| Service | URL |
+|---|---|
+| API Service | http://localhost:8000 |
+| API Docs | http://localhost:8000/docs |
+| MLflow UI | http://localhost:5000 |
+ 
+To stop all services:
+ 
+```bash
+docker compose down
+```
+ 
+> **Codespaces users:** Access services via the forwarded URLs in the **Ports** tab. Add port `5000` manually if it doesn't appear, then set visibility to **Public**.
+ 
 ## Running with GitHub Codespaces
 
 1. Open repository on GitHub

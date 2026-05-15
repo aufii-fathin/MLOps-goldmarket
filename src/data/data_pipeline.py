@@ -1,8 +1,8 @@
-from data.ingestion import main as ingest
-from data.preprocess_gold import main as preprocess_gold
-from data.preprocess_oil import main as preprocess_oil
-from data.preprocess_fred import main as preprocess_fred
-from data.preprocess_merge import main as merge_datasets
+from src.data.ingestion import main as ingest
+from src.data.preprocess_gold import main as preprocess_gold
+from src.data.preprocess_oil import main as preprocess_oil
+from src.data.preprocess_fred import main as preprocess_fred
+from src.data.preprocess_merge import main as merge_datasets
 
 
 def run_data_pipeline():

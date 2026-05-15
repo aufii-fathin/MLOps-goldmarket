@@ -1,9 +1,15 @@
+import os
 import warnings
+from pathlib import Path
 
 warnings.filterwarnings("ignore", category=FutureWarning)
 import mlflow
 
-mlflow.set_tracking_uri("sqlite:///mlflow_new.db")
+mlflow_tracking_uri = os.getenv("MLFLOW_TRACKING_URI", "sqlite:///mlflow_new.db")
+mlflow_artifact_root = os.getenv("MLFLOW_ARTIFACT_ROOT", str(Path.cwd() / "mlruns"))
+Path(mlflow_artifact_root).mkdir(parents=True, exist_ok=True)
+os.environ.setdefault("MLFLOW_ARTIFACT_ROOT", str(Path(mlflow_artifact_root).resolve()))
+mlflow.set_tracking_uri(mlflow_tracking_uri)
 from mlflow.tracking import MlflowClient
 
 EXPERIMENT_NAME = "gold-close-forecast"

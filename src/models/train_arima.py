@@ -1,3 +1,4 @@
+import os
 import warnings
 from dataclasses import dataclass
 from pathlib import Path
@@ -12,11 +13,15 @@ from sklearn.model_selection import TimeSeriesSplit
 warnings.filterwarnings("ignore")
 
 
-def _get_mlflow():
+def _configure_mlflow() -> object | None:
     try:
         import mlflow
 
-        mlflow.set_tracking_uri("sqlite:///mlflow_new.db")
+        mlflow_tracking_uri = os.getenv("MLFLOW_TRACKING_URI", "sqlite:///mlflow_new.db")
+        mlflow_artifact_root = os.getenv("MLFLOW_ARTIFACT_ROOT", str(Path.cwd() / "mlruns"))
+        Path(mlflow_artifact_root).mkdir(parents=True, exist_ok=True)
+        os.environ.setdefault("MLFLOW_ARTIFACT_ROOT", str(Path(mlflow_artifact_root).resolve()))
+        mlflow.set_tracking_uri(mlflow_tracking_uri)
         return mlflow
     except Exception:
         return None

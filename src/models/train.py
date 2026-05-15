@@ -1,3 +1,4 @@
+import os
 import pandas as pd
 import numpy as np
 import joblib
@@ -17,7 +18,12 @@ import mlflow
 import mlflow.sklearn
 import mlflow.xgboost
 
-mlflow.set_tracking_uri("sqlite:///mlflow_new.db")
+# Configure MLflow tracking and artifacts for local and CI use
+mlflow_tracking_uri = os.getenv("MLFLOW_TRACKING_URI", "sqlite:///mlflow_new.db")
+mlflow_artifact_root = os.getenv("MLFLOW_ARTIFACT_ROOT", str(Path.cwd() / "mlruns"))
+Path(mlflow_artifact_root).mkdir(parents=True, exist_ok=True)
+os.environ.setdefault("MLFLOW_ARTIFACT_ROOT", str(Path(mlflow_artifact_root).resolve()))
+mlflow.set_tracking_uri(mlflow_tracking_uri)
 
 import warnings
 import logging

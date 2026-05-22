@@ -31,10 +31,14 @@ services:
       - "5000:5000"
     command: >
       --backend-store-uri postgresql://mlflow:mlflow@postgres:5432/mlflow_db
-      --default-artifact-root /mlflow/artifacts
+      --default-artifact-root /workspaces/MLOps-goldmarket/mlruns
       --host 0.0.0.0
+      --allowed-hosts "*"
+    environment:
+      - MLFLOW_FLASK_SERVER_SECRET_KEY=supersecretkey
     volumes:
       - mlflow_data:/mlflow/artifacts
+      - /workspaces/MLOps-goldmarket/mlruns:/workspaces/MLOps-goldmarket/mlruns
     networks:
       - ml-network
     healthcheck:
@@ -46,16 +50,20 @@ services:
 
   api-service:
     build: .
-    container_name: api-service
     depends_on:
       mlflow-server:
         condition: service_healthy
     ports:
-      - "8000:8000"
+      - "8000-8002:8000"
     environment:
       MLFLOW_TRACKING_URI: http://mlflow-server:5000
+      MLFLOW_HOST: mlflow-server
     networks:
       - ml-network
+    volumes:
+      - /workspaces/MLOps-goldmarket/mlruns:/workspaces/MLOps-goldmarket/mlruns
+    deploy:
+      replicas: 3
 
 networks:
   ml-network:

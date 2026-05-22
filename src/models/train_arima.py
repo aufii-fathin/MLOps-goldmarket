@@ -161,7 +161,7 @@ def _fold_metrics(
 
 
 def main():
-    mlflow = _get_mlflow()
+    mlflow = _configure_mlflow()
 
     df_path = Path("data/processed/gold_features.csv")
     if not df_path.exists():

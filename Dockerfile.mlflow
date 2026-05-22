@@ -2,7 +2,10 @@ FROM python:3.12-slim
 
 RUN apt-get update && apt-get install -y curl && rm -rf /var/lib/apt/lists/*
 
-RUN pip install --no-cache-dir "setuptools==67.8.0" mlflow[postgres]==2.12.1 psycopg2-binary
+RUN pip install --no-cache-dir "setuptools==67.8.0" mlflow[postgres]==3.11.1 psycopg2-binary
+
+ENV MLFLOW_FLASK_SERVER_SECRET_KEY=supersecretkey
+ENV FORWARDED_ALLOW_IPS=*
 
 EXPOSE 5000
 

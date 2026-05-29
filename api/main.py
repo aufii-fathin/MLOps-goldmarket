@@ -9,6 +9,16 @@ import joblib
 import json
 import os
 from pathlib import Path
+from fastapi.responses import Response
+from prometheus_client import (
+    Counter,
+    Histogram,
+    Gauge,
+    generate_latest,
+    CONTENT_TYPE_LATEST
+)
+import psutil
+import time
 
 app = FastAPI(title="Gold Market Forecasting API")
 
@@ -16,6 +26,31 @@ mlflow.set_tracking_uri(os.getenv("MLFLOW_TRACKING_URI", "http://mlflow-server:5
 
 MODEL_NAME_PREFIX = "gold-close-model"
 HORIZONS = [1, 3, 5, 7]
+
+REQUEST_COUNT = Counter(
+    "request_count_total",
+    "Total Prediction Requests"
+)
+
+INFERENCE_LATENCY = Histogram(
+    "inference_latency_seconds",
+    "Prediction Latency"
+)
+
+CPU_USAGE = Gauge(
+    "cpu_usage_percent",
+    "CPU Usage Percent"
+)
+
+MEMORY_USAGE = Gauge(
+    "memory_usage_percent",
+    "Memory Usage Percent"
+)
+
+PREDICTION_H1 = Gauge(
+    "prediction_h1",
+    "Latest H1 Prediction"
+)
 
 # Cache models supaya tidak load ulang tiap request
 _models = {}
@@ -78,7 +113,10 @@ def test_mlflow():
 
 @app.get("/predict")
 def predict():
+    start_time = time.time()
+
     try:
+        REQUEST_COUNT.inc()
         _load_resources()
         df = _build_features()
         latest = df.iloc[-1:]
@@ -90,14 +128,39 @@ def predict():
 
         for h in HORIZONS:
             X_scaled = _scalers[h].transform(X)
-            X_scaled_df = pd.DataFrame(X_scaled, columns=_feature_cols)
-            pred = float(_models[h].predict(X_scaled_df)[0])
-            forecast_date = (latest_date + pd.Timedelta(days=h)).date()
+            X_scaled_df = pd.DataFrame(
+                X_scaled,
+                columns=_feature_cols
+            )
+
+            pred = float(
+                _models[h].predict(X_scaled_df)[0]
+            )
+
+            forecast_date = (
+                latest_date + pd.Timedelta(days=h)
+            ).date()
+
             predictions[f"h{h}"] = {
                 "horizon_days": h,
                 "forecast_date": str(forecast_date),
                 "predicted_close": round(pred, 2),
             }
+
+            if h == 1:
+                PREDICTION_H1.set(pred)
+
+        latency = time.time() - start_time
+
+        INFERENCE_LATENCY.observe(latency)
+
+        CPU_USAGE.set(
+            psutil.cpu_percent()
+        )
+
+        MEMORY_USAGE.set(
+            psutil.virtual_memory().percent
+        )
 
         return {
             "current_date": str(latest_date.date()),
@@ -107,8 +170,10 @@ def predict():
         }
 
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
+        raise HTTPException(
+            status_code=500,
+            detail=str(e)
+        )
 
 @app.get("/models/info")
 def models_info():
@@ -121,3 +186,10 @@ def models_info():
             "staging_alias": f"models:/{name}@staging",
         }
     return info
+
+@app.get("/metrics")
+def metrics():
+    return Response(
+        generate_latest(),
+        media_type=CONTENT_TYPE_LATEST
+    )

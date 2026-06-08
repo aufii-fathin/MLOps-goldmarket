@@ -22,7 +22,15 @@ import time
 
 app = FastAPI(title="Gold Market Forecasting API")
 
-mlflow.set_tracking_uri(os.getenv("MLFLOW_TRACKING_URI", "http://mlflow-server:5000"))
+os.environ.setdefault("MLFLOW_TRACKING_USERNAME", "aufii-fathin")
+os.environ.setdefault(
+    "MLFLOW_TRACKING_PASSWORD",
+    "b0815f5526a09cd2bf06c4324766bd8655aec0ed"
+)
+mlflow.set_tracking_uri(os.getenv(
+    "MLFLOW_TRACKING_URI",
+    "https://dagshub.com/aufii-fathin/MLOps-goldmarket.mlflow"
+))
 
 MODEL_NAME_PREFIX = "gold-close-model"
 HORIZONS = [1, 3, 5, 7]

@@ -19,10 +19,18 @@ import mlflow.sklearn
 import mlflow.xgboost
 
 # Configure MLflow tracking and artifacts for local and CI use
-mlflow_tracking_uri = os.getenv("MLFLOW_TRACKING_URI", "sqlite:///mlflow_new.db")
-mlflow_artifact_root = os.getenv("MLFLOW_ARTIFACT_ROOT", str(Path.cwd() / "mlruns"))
-Path(mlflow_artifact_root).mkdir(parents=True, exist_ok=True)
-os.environ.setdefault("MLFLOW_ARTIFACT_ROOT", str(Path(mlflow_artifact_root).resolve()))
+mlflow_tracking_uri = os.getenv(
+    "MLFLOW_TRACKING_URI",
+    "https://dagshub.com/aufii-fathin/MLOps-goldmarket.mlflow"
+)
+os.environ.setdefault("MLFLOW_TRACKING_USERNAME", "aufii-fathin")
+os.environ.setdefault(
+    "MLFLOW_TRACKING_PASSWORD",
+    "b0815f5526a09cd2bf06c4324766bd8655aec0ed"
+)
+# mlflow_artifact_root = os.getenv("MLFLOW_ARTIFACT_ROOT", str(Path.cwd() / "mlruns"))
+# Path(mlflow_artifact_root).mkdir(parents=True, exist_ok=True)
+# os.environ.setdefault("MLFLOW_ARTIFACT_ROOT", str(Path(mlflow_artifact_root).resolve()))
 mlflow.set_tracking_uri(mlflow_tracking_uri)
 
 import warnings
@@ -218,11 +226,11 @@ def main():
                         f"    RMSE%: {rmse_pct * 100:.3f}% | Naive RMSE%: {naive_rmse_pct * 100:.3f}%"
                     )
 
-                    # Log model per fold
-                    if name == "XGBoost":
-                        mlflow.xgboost.log_model(model, artifact_path="model")
-                    else:
-                        mlflow.sklearn.log_model(model, artifact_path="model")
+                    # # Log model per fold
+                    # if name == "XGBoost":
+                    #     mlflow.xgboost.log_model(model, artifact_path="model")
+                    # else:
+                    #     mlflow.sklearn.log_model(model, artifact_path="model")
 
     # AVERAGE METRICS ACROSS FOLDS + RETRAIN BEST PER HORIZON
     for horizon in horizons:

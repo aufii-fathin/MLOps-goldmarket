@@ -1,0 +1,27 @@
+{
+  "drift_detected": true,
+  "recent_rows": 22,
+  "baseline_rows": 2480,
+  "features": {
+    "Close": {
+      "ks_statistic": 0.969,
+      "p_value": 0.0,
+      "drift": true
+    },
+    "return_1d": {
+      "ks_statistic": 0.2029,
+      "p_value": 0.2892,
+      "drift": false
+    },
+    "rolling_mean_7": {
+      "ks_statistic": 0.9726,
+      "p_value": 0.0,
+      "drift": true
+    },
+    "volatility_20": {
+      "ks_statistic": 0.8391,
+      "p_value": 0.0,
+      "drift": true
+    }
+  }
+}

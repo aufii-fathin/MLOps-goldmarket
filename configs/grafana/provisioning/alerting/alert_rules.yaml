@@ -9,7 +9,7 @@ groups:
 
       - uid: high-latency-rule
         title: HighInferenceLatency
-        condition: C
+        condition: B
         data:
           - refId: A
             datasourceUid: prometheus
@@ -20,16 +20,24 @@ groups:
               expr: histogram_quantile(0.95, rate(inference_latency_seconds_bucket[5m]))
               intervalMs: 1000
               maxDataPoints: 43200
-          - refId: C
+          - refId: B
             datasourceUid: "__expr__"
+            relativeTimeRange:
+              from: 300
+              to: 0
             model:
-              type: threshold
+              type: classic_conditions
+              refId: B
               conditions:
                 - evaluator:
                     type: gt
                     params: [2.0]
+                  operator:
+                    type: and
                   query:
                     params: [A]
+                  reducer:
+                    type: last
         for: 2m
         noDataState: NoData
         execErrState: Error
@@ -40,7 +48,7 @@ groups:
 
       - uid: data-drift-rule
         title: DataDriftDetected
-        condition: C
+        condition: B
         data:
           - refId: A
             datasourceUid: prometheus
@@ -51,16 +59,24 @@ groups:
               expr: gold_drift_detected
               intervalMs: 1000
               maxDataPoints: 43200
-          - refId: C
+          - refId: B
             datasourceUid: "__expr__"
+            relativeTimeRange:
+              from: 300
+              to: 0
             model:
-              type: threshold
+              type: classic_conditions
+              refId: B
               conditions:
                 - evaluator:
                     type: gt
                     params: [0]
+                  operator:
+                    type: and
                   query:
                     params: [A]
+                  reducer:
+                    type: last
         for: 0s
         noDataState: NoData
         execErrState: Error

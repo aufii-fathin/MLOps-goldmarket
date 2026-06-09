@@ -1,20 +1,13 @@
-name: Continuous Training Pipeline
+name: Daily Data Ingestion & Drift Detection
 
 on:
   schedule:
-    - cron: '0 17 * * 0'
-
-  repository_dispatch:
-    types: [retraining-triggered]
+    - cron: '0 17 * * *'
 
   workflow_dispatch:
-    inputs:
-      reason:
-        description: 'Alasan trigger manual'
-        default: 'manual-simulation'
 
 jobs:
-  continuous-training:
+  ingest-and-detect:
     runs-on: ubuntu-latest
     env:
       MLFLOW_TRACKING_URI: https://dagshub.com/aufii-fathin/MLOps-goldmarket.mlflow
@@ -42,19 +35,18 @@ jobs:
           dvc remote modify origin user ${{ secrets.DAGSHUB_USER }}
           dvc remote modify origin password ${{ secrets.DAGSHUB_TOKEN }}
 
-      - name: Pull Data Terbaru dari DagsHub
+      - name: Pull Data dari DagsHub
         run: dvc pull
+
+      - name: Fetch & Preprocess Data Terbaru
+        run: python src/data/data_pipeline.py
+
+      - name: Push Updated Data ke DagsHub
+        run: |
+          dvc add data/raw data/processed
+          dvc push
 
       - name: Detect Data Drift
         run: |
           python src/monitoring/drift_detector.py
           cat models/drift_report.json
-
-      - name: Retrain Model
-        run: python src/models/train.py
-
-      - name: Evaluate Model Performance
-        run: python src/models/evaluate.py
-
-      - name: Compare & Promote Model
-        run: python src/registry/transition_stage.py

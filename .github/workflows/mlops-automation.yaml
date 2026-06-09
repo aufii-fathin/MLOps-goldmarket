@@ -43,12 +43,3 @@ jobs:
 
       - name: Run Automated Tests
         run: pytest tests/
-
-      - name: Retrain Model
-        run: python src/models/train.py
-
-      - name: Validate Model Performance
-        run: python src/models/evaluate.py
-
-      - name: Transition Model to Staging
-        run: python src/registry/transition_stage.py

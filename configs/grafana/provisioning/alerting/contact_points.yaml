@@ -7,8 +7,5 @@ contactPoints:
       - uid: github-ct-trigger
         type: webhook
         settings:
-          url: https://api.github.com/repos/aufii-fathin/MLOps-goldmarket/dispatches
+          url: http://webhook-relay:9095/relay
           httpMethod: POST
-          authorization_scheme: Bearer
-          authorization_credentials: ${GITHUB_PAT}
-          message: '{"event_type": "retraining-triggered"}'

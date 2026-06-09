@@ -28,6 +28,7 @@ Production-ready MLOps system for forecasting gold prices and monitoring market 
 - [Model Versioning & Registry](#model-versioning--registry)
 - [Model Serving](#model-serving)
 - [Horizontal Scaling](#horizontal-scaling)
+- [Continuous Training (CT) System](#continuous-training-ct-system)
 - [Tech Stack](#tech-stack)
 - [Contributors](#contributors)
 - [License](#license)
@@ -361,6 +362,47 @@ docker compose ps
 
 All replicas share the same MLflow tracking server and model registry, ensuring consistent model serving across instances.
 
+Tambahkan section baru di README, letaknya setelah section **Monitoring Layer** atau sebelum **Tech Stack**. Ini kontennya:
+
+## Continuous Training (CT) System
+
+This project implements a closed-loop Continuous Training system that automatically detects model decay and triggers retraining without manual intervention.
+
+### Trigger Scenarios & Thresholds
+
+| Scenario | Trigger Condition | Threshold |
+|---|---|---|
+| A – Performance-based | P95 inference latency monitored via Prometheus, evaluated by Grafana Alert | > 2.0 seconds for 2 minutes |
+| B – Data-based | Statistical drift detected on gold price features using Kolmogorov-Smirnov test | p-value < 0.05 on any monitored feature |
+| C – Schedule-based | Weekly scheduled retraining via GitHub Actions cron | Every Sunday 00:00 WIB (17:00 UTC) |
+
+### Monitored Features for Drift Detection
+
+| Feature | Description |
+|---|---|
+| `Close` | Daily gold closing price |
+| `return_1d` | Daily return percentage |
+| `rolling_mean_7` | 7-day rolling average price |
+| `volatility_20` | 20-day rolling volatility |
+
+### Model Promotion Thresholds
+
+A retrained model is only promoted to `@production` if its average RMSE across walk-forward folds is **lower than the current production model** and passes the following absolute thresholds:
+
+| Horizon | Max RMSE Threshold |
+|---|---|
+| +1 day | 30.0 |
+| +3 days | 52.0 |
+| +5 days | 66.0 |
+| +7 days | 78.0 |
+
+### Workflows
+
+| Workflow | Trigger | Purpose |
+|---|---|---|
+| `ct_ingest.yml` | Daily 00:00 WIB | Ingest new data + detect drift |
+| `ct_pipeline.yml` | Every Sunday + alert trigger | Retrain + evaluate + promote |
+| `mlops-automation.yaml` | Push/PR to main/dev | CI — run tests only |
 
 ## Tech Stack
 
@@ -372,7 +414,6 @@ All replicas share the same MLflow tracking server and model registry, ensuring 
 * FastAPI
 * Docker
 * GitHub Actions
-
 
 ## Contributors
 

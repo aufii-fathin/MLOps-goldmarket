@@ -10,8 +10,3 @@ scrape_configs:
           - 'mlops-goldmarket-api-service-2:8000'
           - 'mlops-goldmarket-api-service-3:8000'
     metrics_path: /metrics
-
-  - job_name: 'drift-metrics'
-    static_configs:
-      - targets: ['localhost:9100']
-    metrics_path: /metrics/drift.prom

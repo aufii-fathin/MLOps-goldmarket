@@ -13,6 +13,9 @@ groups:
         data:
           - refId: A
             datasourceUid: prometheus
+            relativeTimeRange:
+              from: 300
+              to: 0
             model:
               expr: histogram_quantile(0.95, rate(inference_latency_seconds_bucket[5m]))
               intervalMs: 1000
@@ -41,6 +44,9 @@ groups:
         data:
           - refId: A
             datasourceUid: prometheus
+            relativeTimeRange:
+              from: 300
+              to: 0
             model:
               expr: gold_drift_detected
               intervalMs: 1000

@@ -3,8 +3,6 @@ import numpy as np
 from scipy import stats
 import json, sys
 from pathlib import Path
-from prometheus_client import Gauge
-from api.main import DRIFT_DETECTED
 
 DRIFT_THRESHOLD = 0.05
 FEATURES_TO_CHECK = ["Close", "return_1d", "rolling_mean_7", "volatility_20"]

@@ -1,0 +1,11 @@
+apiVersion: 1
+
+contactPoints:
+  - orgId: 1
+    name: github-ct-trigger
+    receivers:
+      - uid: github-ct-trigger
+        type: webhook
+        settings:
+          url: http://webhook-relay:9095/relay
+          httpMethod: POST

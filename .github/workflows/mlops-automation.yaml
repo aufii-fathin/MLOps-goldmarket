@@ -1,53 +1,27 @@
-name: MLOps Automation Pipeline
+steps:
+  - name: Checkout Repository
+    uses: actions/checkout@v4
 
-on:
-  push:
-    branches:
-      - main
-      - dev
+  - name: Setup Python
+    uses: actions/setup-python@v5
+    with:
+      python-version: '3.12'
 
-  pull_request:
+  - name: Install Dependencies
+    run: |
+      pip install -r requirements.txt
+      pip install pytest
+      pip install "dvc[http]"
+      pip install dagshub
 
-jobs:
-  pipeline:
-    runs-on: ubuntu-latest
-    env:
-      MLFLOW_TRACKING_URI: sqlite:///${{ github.workspace }}/mlflow_ci.db
-      MLFLOW_ARTIFACT_ROOT: ${{ github.workspace }}/mlruns
+  - name: Configure DVC Authentication
+    run: |
+      dvc remote modify origin auth basic
+      dvc remote modify origin user ${{ secrets.DAGSHUB_USER }}
+      dvc remote modify origin password ${{ secrets.DAGSHUB_TOKEN }}
 
-    steps:
-      - name: Checkout Repository
-        uses: actions/checkout@v4
+  - name: Pull Dataset from DVC
+    run: dvc pull
 
-      - name: Setup Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.12'
-
-      - name: Install Dependencies
-        run: |
-          pip install -r requirements.txt
-          pip install pytest
-          pip install "dvc[http]"
-          pip install dagshub
-
-      - name: Configure DVC Authentication
-        run: |
-          dvc remote modify origin auth basic
-          dvc remote modify origin user ${{ secrets.DAGSHUB_USER }}
-          dvc remote modify origin password ${{ secrets.DAGSHUB_TOKEN }}
-
-      - name: Pull Dataset from DVC
-        run: dvc pull
-
-      - name: Run Automated Tests
-        run: pytest tests/
-
-      - name: Retrain Model
-        run: python src/models/train.py
-
-      - name: Validate Model Performance
-        run: python src/models/evaluate.py
-
-      - name: Transition Model to Staging
-        run: python src/registry/transition_stage.py
+  - name: Run Automated Tests
+    run: pytest tests/

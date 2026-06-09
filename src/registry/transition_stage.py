@@ -5,7 +5,15 @@ warnings.filterwarnings("ignore", category=FutureWarning)
 import mlflow
 from mlflow.tracking import MlflowClient
 
-mlflow_tracking_uri = os.getenv("MLFLOW_TRACKING_URI", "sqlite:///mlflow_new.db")
+mlflow_tracking_uri = os.getenv(
+    "MLFLOW_TRACKING_URI",
+    "https://dagshub.com/aufii-fathin/MLOps-goldmarket.mlflow"
+)
+os.environ.setdefault("MLFLOW_TRACKING_USERNAME", "aufii-fathin")
+os.environ.setdefault(
+    "MLFLOW_TRACKING_PASSWORD",
+    "b0815f5526a09cd2bf06c4324766bd8655aec0ed"
+)
 mlflow.set_tracking_uri(mlflow_tracking_uri)
 
 EXPERIMENT_NAME = "gold-close-forecast"
@@ -15,13 +23,14 @@ MODEL_NAME_PREFIX = "gold-close-model"
 
 def _get_best_run_per_model_type(horizon: int):
     """
-    Cari best run per model type (sklearn vs ARIMA) untuk horizon tertentu.
+    Cari run terbaru per model type (sklearn vs ARIMA) untuk horizon tertentu.
     Return dict: {model_type: {run_id, rmse, name}}
     """
     runs = mlflow.search_runs(
         experiment_names=[EXPERIMENT_NAME],
         filter_string=f"tags.mlflow.runName LIKE 'BEST_%_h{horizon}_final'",
-    )
+        order_by=["start_time DESC"],
+    )  
 
     if runs.empty:
         return {}
@@ -45,23 +54,33 @@ def _get_best_run_per_model_type(horizon: int):
     result = {}
 
     if not arima_runs.empty:
-        best_arima = arima_runs.loc[arima_runs[metric_col].idxmin()]
+        latest_arima = arima_runs.iloc[0]
         result["arima"] = {
-            "run_id": best_arima.run_id,
-            "rmse": float(best_arima[metric_col]),
-            "name": best_arima["tags.mlflow.runName"],
+            "run_id": latest_arima.run_id,
+            "rmse": float(latest_arima[metric_col]),
+            "name": latest_arima["tags.mlflow.runName"],
         }
 
     if not sklearn_runs.empty:
-        best_sklearn = sklearn_runs.loc[sklearn_runs[metric_col].idxmin()]
+        latest_sklearn = sklearn_runs.iloc[0]
         result["sklearn"] = {
-            "run_id": best_sklearn.run_id,
-            "rmse": float(best_sklearn[metric_col]),
-            "name": best_sklearn["tags.mlflow.runName"],
+            "run_id": latest_sklearn.run_id,
+            "rmse": float(latest_sklearn[metric_col]),
+            "name": latest_sklearn["tags.mlflow.runName"],
         }
 
     return result
 
+def _get_production_rmse(client, model_name: str) -> float | None:
+    """Ambil avg_rmse model yang sedang production di registry."""
+    try:
+        mv = client.get_model_version_by_alias(model_name, "production")
+        run = mlflow.get_run(mv.run_id)
+        for key in ("avg_rmse", "rmse"):
+            if key in run.data.metrics:
+                return run.data.metrics[key]
+    except Exception:
+        return None
 
 def main() -> None:
     client = MlflowClient()
@@ -94,8 +113,18 @@ def main() -> None:
 
         if "sklearn" in registered:
             sklearn_version = registered["sklearn"]["version"]
-            client.set_registered_model_alias(model_name, "production", sklearn_version)
-            print(f"\n  ✅ PRODUCTION → sklearn (v{sklearn_version}, RMSE={registered['sklearn']['rmse']:.4f})")
+            new_rmse = registered["sklearn"]["rmse"]
+            current_rmse = _get_production_rmse(client, model_name)
+
+            if current_rmse is None or new_rmse < current_rmse:
+                client.set_registered_model_alias(
+                    model_name, "production", sklearn_version
+                )
+                label = f"(sebelumnya {current_rmse:.4f})" if current_rmse else "(pertama kali)"
+                print(f"\n  ✅ PROMOTED → v{sklearn_version} RMSE={new_rmse:.4f} {label}")
+            else:
+                print(f"\n  ⏭️  SKIP → model lama lebih baik "
+                    f"(lama={current_rmse:.4f} vs baru={new_rmse:.4f})")
 
         if "arima" in registered:
             arima_version = registered["arima"]["version"]

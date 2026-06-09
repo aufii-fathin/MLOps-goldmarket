@@ -22,7 +22,15 @@ import time
 
 app = FastAPI(title="Gold Market Forecasting API")
 
-mlflow.set_tracking_uri(os.getenv("MLFLOW_TRACKING_URI", "http://mlflow-server:5000"))
+os.environ.setdefault("MLFLOW_TRACKING_USERNAME", "aufii-fathin")
+os.environ.setdefault(
+    "MLFLOW_TRACKING_PASSWORD",
+    "b0815f5526a09cd2bf06c4324766bd8655aec0ed"
+)
+mlflow.set_tracking_uri(os.getenv(
+    "MLFLOW_TRACKING_URI",
+    "https://dagshub.com/aufii-fathin/MLOps-goldmarket.mlflow"
+))
 
 MODEL_NAME_PREFIX = "gold-close-model"
 HORIZONS = [1, 3, 5, 7]
@@ -50,6 +58,11 @@ MEMORY_USAGE = Gauge(
 PREDICTION_H1 = Gauge(
     "prediction_h1",
     "Latest H1 Prediction"
+)
+
+DRIFT_DETECTED = Gauge(
+    "gold_drift_detected",
+    "1 jika data drift terdeteksi, 0 jika tidak"
 )
 
 # Cache models supaya tidak load ulang tiap request
@@ -189,6 +202,13 @@ def models_info():
 
 @app.get("/metrics")
 def metrics():
+    try:
+        with open("models/drift_report.json") as f:
+            report = json.load(f)
+            DRIFT_DETECTED.set(1 if report.get("drift_detected") else 0)
+    except FileNotFoundError:
+        DRIFT_DETECTED.set(0)
+    
     return Response(
         generate_latest(),
         media_type=CONTENT_TYPE_LATEST

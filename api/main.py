@@ -60,6 +60,11 @@ PREDICTION_H1 = Gauge(
     "Latest H1 Prediction"
 )
 
+DRIFT_DETECTED = Gauge(
+    "gold_drift_detected",
+    "1 jika data drift terdeteksi, 0 jika tidak"
+)
+
 # Cache models supaya tidak load ulang tiap request
 _models = {}
 _scalers = {}
@@ -197,6 +202,13 @@ def models_info():
 
 @app.get("/metrics")
 def metrics():
+    try:
+        with open("models/drift_report.json") as f:
+            report = json.load(f)
+            DRIFT_DETECTED.set(1 if report.get("drift_detected") else 0)
+    except FileNotFoundError:
+        DRIFT_DETECTED.set(0)
+    
     return Response(
         generate_latest(),
         media_type=CONTENT_TYPE_LATEST

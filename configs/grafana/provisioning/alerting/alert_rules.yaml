@@ -1,0 +1,64 @@
+apiVersion: 1
+
+groups:
+  - orgId: 1
+    name: gold_market_ct_triggers
+    folder: CT Alerts
+    interval: 1m
+    rules:
+
+      - uid: high-latency-rule
+        title: HighInferenceLatency
+        condition: C
+        data:
+          - refId: A
+            datasourceUid: prometheus
+            model:
+              expr: histogram_quantile(0.95, rate(inference_latency_seconds_bucket[5m]))
+              intervalMs: 1000
+              maxDataPoints: 43200
+          - refId: C
+            datasourceUid: "__expr__"
+            model:
+              type: threshold
+              conditions:
+                - evaluator:
+                    type: gt
+                    params: [2.0]
+                  query:
+                    params: [A]
+        for: 2m
+        noDataState: NoData
+        execErrState: Error
+        annotations:
+          summary: "P95 latency melebihi 2s"
+        notification_settings:
+          receiver: github-ct-trigger
+
+      - uid: data-drift-rule
+        title: DataDriftDetected
+        condition: C
+        data:
+          - refId: A
+            datasourceUid: prometheus
+            model:
+              expr: gold_drift_detected
+              intervalMs: 1000
+              maxDataPoints: 43200
+          - refId: C
+            datasourceUid: "__expr__"
+            model:
+              type: threshold
+              conditions:
+                - evaluator:
+                    type: gt
+                    params: [0]
+                  query:
+                    params: [A]
+        for: 0s
+        noDataState: NoData
+        execErrState: Error
+        annotations:
+          summary: "Data drift terdeteksi"
+        notification_settings:
+          receiver: github-ct-trigger

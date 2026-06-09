@@ -1,0 +1,14 @@
+apiVersion: 1
+
+contactPoints:
+  - orgId: 1
+    name: github-ct-trigger
+    receivers:
+      - uid: github-ct-trigger
+        type: webhook
+        settings:
+          url: https://api.github.com/repos/aufii-fathin/MLOps-goldmarket/dispatches
+          httpMethod: POST
+          authorization_scheme: Bearer
+          authorization_credentials: ${GITHUB_PAT}
+          message: '{"event_type": "retraining-triggered"}'

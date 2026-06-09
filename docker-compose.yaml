@@ -20,7 +20,6 @@ services:
       - "9090:9090"
     volumes:
       - ./configs/prometheus.yml:/etc/prometheus/prometheus.yml
-      - ./configs/alert_rules.yml:/etc/prometheus/alert_rules.yml
     networks:
       - ml-network
     depends_on:
@@ -33,24 +32,15 @@ services:
       - "3000:3000"
     environment:
       - GF_SECURITY_ADMIN_PASSWORD=admin
+      - GF_PATHS_PROVISIONING=/etc/grafana/provisioning
+      - GITHUB_PAT=${GITHUB_PAT}
     volumes:
       - grafana_data:/var/lib/grafana
+      - ./configs/grafana/provisioning:/etc/grafana/provisioning
     networks:
       - ml-network
     depends_on:
       - prometheus
-
-  alertmanager:
-    image: prom/alertmanager:latest
-    container_name: alertmanager
-    ports:
-      - "9093:9093"
-    volumes:
-      - ./configs/alertmanager.yml:/etc/alertmanager/alertmanager.yml
-    networks:
-      - ml-network
-    command:
-      - '--config.file=/etc/alertmanager/alertmanager.yml'
 
 networks:
   ml-network:

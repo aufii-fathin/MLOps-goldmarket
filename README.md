@@ -11,7 +11,7 @@
 ![CI/CD](https://img.shields.io/badge/GitHub%20Actions-CI/CD-black)
 ![DVC](https://img.shields.io/badge/DVC-Data%20Versioning-green)
 
-Production-ready MLOps system for forecasting gold prices and monitoring market risk using time-series modeling, drift detection, continual learning, and dataset versioning.
+Production-ready MLOps system for forecasting gold prices and monitoring using time-series modeling, drift detection, continual learning, and dataset versioning.
 
 </div>
 

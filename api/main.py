@@ -1,74 +1,70 @@
 from fastapi import FastAPI, HTTPException
-from pydantic import BaseModel
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import Response, FileResponse
 import mlflow
 import mlflow.pyfunc
+import mlflow.tracking
 import pandas as pd
 import numpy as np
 import yfinance as yf
 import joblib
 import json
 import os
+from datetime import datetime
 from pathlib import Path
-from fastapi.responses import Response
 from prometheus_client import (
     Counter,
     Histogram,
     Gauge,
     generate_latest,
-    CONTENT_TYPE_LATEST
+    CONTENT_TYPE_LATEST,
 )
 import psutil
 import time
+from datetime import timezone, timedelta
 
 app = FastAPI(title="Gold Market Forecasting API")
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_methods=["GET"],
+    allow_headers=["*"],
+)
 
 os.environ.setdefault("MLFLOW_TRACKING_USERNAME", "aufii-fathin")
 os.environ.setdefault(
     "MLFLOW_TRACKING_PASSWORD",
-    "b0815f5526a09cd2bf06c4324766bd8655aec0ed"
+    "b0815f5526a09cd2bf06c4324766bd8655aec0ed",
 )
-mlflow.set_tracking_uri(os.getenv(
-    "MLFLOW_TRACKING_URI",
-    "https://dagshub.com/aufii-fathin/MLOps-goldmarket.mlflow"
-))
+mlflow.set_tracking_uri(
+    os.getenv(
+        "MLFLOW_TRACKING_URI",
+        "https://dagshub.com/aufii-fathin/MLOps-goldmarket.mlflow",
+    )
+)
 
 MODEL_NAME_PREFIX = "gold-close-model"
 HORIZONS = [1, 3, 5, 7]
 
-REQUEST_COUNT = Counter(
-    "request_count_total",
-    "Total Prediction Requests"
-)
-
-INFERENCE_LATENCY = Histogram(
-    "inference_latency_seconds",
-    "Prediction Latency"
-)
-
-CPU_USAGE = Gauge(
-    "cpu_usage_percent",
-    "CPU Usage Percent"
-)
-
-MEMORY_USAGE = Gauge(
-    "memory_usage_percent",
-    "Memory Usage Percent"
-)
-
-PREDICTION_H1 = Gauge(
-    "prediction_h1",
-    "Latest H1 Prediction"
-)
+REQUEST_COUNT = Counter("request_count_total", "Total Prediction Requests")
+INFERENCE_LATENCY = Histogram("inference_latency_seconds", "Prediction Latency")
+CPU_USAGE = Gauge("cpu_usage_percent", "CPU Usage Percent")
+MEMORY_USAGE = Gauge("memory_usage_percent", "Memory Usage Percent")
+PREDICTION_H1 = Gauge("prediction_h1", "Latest H1 Prediction")
 
 DRIFT_DETECTED = Gauge(
-    "gold_drift_detected",
-    "1 jika data drift terdeteksi, 0 jika tidak"
+    "gold_drift_detected", "1 jika data drift terdeteksi, 0 jika tidak"
 )
 
-# Cache models supaya tidak load ulang tiap request
-_models = {}
-_scalers = {}
-_feature_cols = None
+PRODUCTION_RMSE = {
+    h: Gauge(f"gold_production_rmse_h{h}", f"RMSE model production horizon {h}")
+    for h in HORIZONS
+}
+
+_models: dict = {}
+_scalers: dict = {}
+_feature_cols: list | None = None
 
 def _load_resources():
     global _feature_cols
@@ -81,7 +77,6 @@ def _load_resources():
             model_uri = f"models:/{MODEL_NAME_PREFIX}-h{h}@production"
             _models[h] = mlflow.pyfunc.load_model(model_uri)
             _scalers[h] = joblib.load(f"models/scaler_h{h}.pkl")
-
 
 def _build_features() -> pd.DataFrame:
     df = yf.download("GC=F", period="60d", interval="1d", progress=False)
@@ -105,7 +100,6 @@ def _build_features() -> pd.DataFrame:
 
     return df
 
-
 @app.get("/")
 def home():
     return {"message": "Gold Market Forecasting API Running"}
@@ -127,7 +121,6 @@ def test_mlflow():
 @app.get("/predict")
 def predict():
     start_time = time.time()
-
     try:
         REQUEST_COUNT.inc()
         _load_resources()
@@ -141,39 +134,20 @@ def predict():
 
         for h in HORIZONS:
             X_scaled = _scalers[h].transform(X)
-            X_scaled_df = pd.DataFrame(
-                X_scaled,
-                columns=_feature_cols
-            )
-
-            pred = float(
-                _models[h].predict(X_scaled_df)[0]
-            )
-
-            forecast_date = (
-                latest_date + pd.Timedelta(days=h)
-            ).date()
-
+            X_scaled_df = pd.DataFrame(X_scaled, columns=_feature_cols)
+            pred = float(_models[h].predict(X_scaled_df)[0])
+            forecast_date = (latest_date + pd.Timedelta(days=h)).date()
             predictions[f"h{h}"] = {
                 "horizon_days": h,
                 "forecast_date": str(forecast_date),
                 "predicted_close": round(pred, 2),
             }
-
             if h == 1:
                 PREDICTION_H1.set(pred)
 
-        latency = time.time() - start_time
-
-        INFERENCE_LATENCY.observe(latency)
-
-        CPU_USAGE.set(
-            psutil.cpu_percent()
-        )
-
-        MEMORY_USAGE.set(
-            psutil.virtual_memory().percent
-        )
+        INFERENCE_LATENCY.observe(time.time() - start_time)
+        CPU_USAGE.set(psutil.cpu_percent())
+        MEMORY_USAGE.set(psutil.virtual_memory().percent)
 
         return {
             "current_date": str(latest_date.date()),
@@ -183,10 +157,8 @@ def predict():
         }
 
     except Exception as e:
-        raise HTTPException(
-            status_code=500,
-            detail=str(e)
-        )
+        raise HTTPException(status_code=500, detail=str(e))
+
 
 @app.get("/models/info")
 def models_info():
@@ -200,16 +172,99 @@ def models_info():
         }
     return info
 
-@app.get("/metrics")
-def metrics():
+
+@app.get("/history")
+def history():
+    """Mengembalikan 30 hari terakhir harga penutupan gold (XAU/USD)."""
+    df = yf.download("GC=F", period="35d", interval="1d", progress=False)
+    if isinstance(df.columns, pd.MultiIndex):
+        df.columns = df.columns.get_level_values(0)
+    df = df.reset_index()[["Date", "Close"]].dropna().tail(30)
+    return [
+        {"date": str(row["Date"].date()), "close": round(float(row["Close"]), 2)}
+        for _, row in df.iterrows()
+    ]
+
+@app.get("/system/info")
+def system_info():
+    """Metadata sistem: data terbaru, last trained, trigger reason, drift status."""
+
+    try:
+        df = pd.read_csv("data/processed/gold_features.csv")
+        last_data_date = str(pd.to_datetime(df["Date"]).max().date())
+    except Exception:
+        last_data_date = "unknown"
+
+    last_trained_at = "unknown"
+    trigger_reason = "unknown"
+    model_version = "unknown"
+    try:
+        client = mlflow.tracking.MlflowClient()
+        experiment = client.get_experiment_by_name("gold-close-forecast")
+        if experiment:
+            runs = client.search_runs(
+                experiment_ids=[experiment.experiment_id],
+                filter_string="tags.mlflow.runName LIKE 'BEST_%_final'",
+                order_by=["start_time DESC"],
+                max_results=1,
+            )
+            if runs:
+                run = runs[0]
+                WIB = timezone(timedelta(hours=7))
+                last_trained_at = datetime.fromtimestamp(
+                    run.info.start_time / 1000, tz=timezone.utc
+                ).astimezone(WIB).strftime("%d %b %Y, %H:%M WIB")
+                trigger_reason = run.data.tags.get("trigger", "scheduled")
+                model_version = run.data.tags.get(
+                    "mlflow.source.git.commit", ""
+                )[:7] or "unknown"
+    except Exception:
+        pass
+
+    drift_detected = False
+    drift_features: dict = {}
     try:
         with open("models/drift_report.json") as f:
             report = json.load(f)
-            DRIFT_DETECTED.set(1 if report.get("drift_detected") else 0)
+        drift_detected = bool(report.get("drift_detected", False))
+        drift_features = {
+            k: v for k, v in report.get("features", {}).items() if v.get("drift")
+        }
+    except Exception:
+        pass
+
+    return {
+        "last_data_date": last_data_date,
+        "last_trained_at": last_trained_at,
+        "trigger_reason": trigger_reason,
+        "model_version": model_version,
+        "drift_detected": drift_detected,
+        "drifted_features": list(drift_features.keys()),
+    }
+
+@app.get("/metrics")
+def metrics():
+    # Drift gauge
+    try:
+        with open("models/drift_report.json") as f:
+            report = json.load(f)
+        DRIFT_DETECTED.set(1 if report.get("drift_detected") else 0)
     except FileNotFoundError:
         DRIFT_DETECTED.set(0)
-    
-    return Response(
-        generate_latest(),
-        media_type=CONTENT_TYPE_LATEST
-    )
+
+    # Production RMSE per horizon (best model = min RMSE di CSV)
+    for h in HORIZONS:
+        try:
+            df = pd.read_csv(f"models/model_results_h{h}.csv")
+            PRODUCTION_RMSE[h].set(float(df["rmse"].min()))
+        except Exception:
+            PRODUCTION_RMSE[h].set(0)
+
+    return Response(generate_latest(), media_type=CONTENT_TYPE_LATEST)
+
+@app.get("/dashboard", include_in_schema=False)
+def dashboard():
+    html_path = Path("web/dashboard.html")
+    if not html_path.exists():
+        raise HTTPException(status_code=404, detail="dashboard.html not found in web/")
+    return FileResponse(html_path)

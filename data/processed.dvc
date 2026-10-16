@@ -1,6 +1,6 @@
 outs:
-- md5: 3688bcdbaf83810a7817a74fdef013ec.dir
-  size: 2163942
+- md5: 6d9ba47b580b8f5c25cd370af2109a07.dir
+  size: 2164739
   nfiles: 4
   hash: md5
   path: processed
